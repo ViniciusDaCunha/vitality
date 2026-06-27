@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codebase-vitality"
+version = "0.1.0"
+description = "Local-first CLI for codebase vitality signals."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Codebase Vitality contributors" }
+]
+
+[project.scripts]
+vitality = "vitality.cli:main"
