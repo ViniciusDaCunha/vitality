@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Local-first CLI for codebase vitality signals."
 readme = "README.md"
 requires-python = ">=3.10"
+dependencies = [
+    "coverage>=7"
+]
 license = { text = "Apache-2.0" }
 authors = [
     { name = "Codebase Vitality contributors" }
