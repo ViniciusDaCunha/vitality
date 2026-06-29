@@ -29,6 +29,7 @@ def collect(repo_path: str | Path, connection: sqlite3.Connection) -> int:
     manifest_path = Path(repo_path) / REQUIREMENTS_FILE
     dependencies = parse_requirements(manifest_path)
 
+    db.clear_declared_dependencies(connection)
     for dependency in dependencies:
         db.insert_declared_dependency(
             connection,

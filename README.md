@@ -9,17 +9,19 @@ server, telemetry, accounts, or external services.
 
 ## Status
 
-This repository is in early MVP development. The foundation layer and collectors
-are being built incrementally:
+This repository is in early MVP development. The core local CLI workflow is now
+available for MVP validation:
 
 - `vitality init` creates `.vitality/data.db` and adds `.vitality/` to
   `.gitignore`.
 - Git history collection records changed files per commit.
 - Runtime trace collection uses `coverage.py` to record executed modules.
 - `requirements.txt` parsing records declared Python dependencies.
-
-The `scan`, `deps`, and `query` user-facing workflows are planned MVP commands
-and are not complete yet.
+- `vitality scan` collects Git history, declared dependencies, runtime trace
+  data, and records a scan.
+- `vitality deps` reports declared dependencies as `used` or `unused`.
+- `vitality query --module <path> --format json` returns module-level JSON for
+  agent and script consumption.
 
 ## Goals
 
@@ -42,19 +44,58 @@ first or install dependencies in an isolated environment.
 
 ## Usage
 
-Initialize a Git repository for Vitality:
+From a Git repository, run a scan and then inspect dependency usage:
+
+```bash
+vitality scan
+vitality deps
+```
+
+`vitality scan` creates `.vitality/data.db` if needed, collects Git history,
+parses `requirements.txt`, and executes the target project's own test suite under
+runtime tracing. Treat it with the same trust boundary as running that test
+suite directly.
+
+You can also prepare the local database explicitly:
 
 ```bash
 vitality init
 ```
 
-This creates:
+That creates `.vitality/data.db`, applies the SQLite schema, and adds
+`.vitality/` to `.gitignore`. Running outside a Git repository exits with a
+clear error.
 
-- `.vitality/data.db`
-- SQLite tables for commits, declared dependencies, runtime calls, and scans
-- a `.vitality/` entry in `.gitignore`
+### Real Output Example
 
-Running outside a Git repository exits with a clear error.
+The following output was captured against the Codebase Vitality repository.
+This repository currently does not have a `requirements.txt`, so the dependency
+table is empty while the scan still records Git history and runtime trace data.
+
+```bash
+PYTHONPATH=src python3 -m vitality.cli scan
+```
+
+<!-- scan-output:start -->
+```text
+scan_id: 1877ebb1-c701-4505-a5a1-e35363779cfe
+commits parsed: 5
+dependencies declared: 0
+symbols traced: 6
+duration: 6.92s
+```
+<!-- scan-output:end -->
+
+```bash
+PYTHONPATH=src python3 -m vitality.cli deps
+```
+
+<!-- deps-output:start -->
+```text
+Dependency  Status
+----------  ------
+```
+<!-- deps-output:end -->
 
 ## Development
 

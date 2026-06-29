@@ -31,6 +31,7 @@ def collect(repo_path: str | Path, connection: sqlite3.Connection) -> int:
     log_output = read_git_log(Path(repo_path))
     changes = parse_git_log(log_output)
 
+    db.clear_commits(connection)
     for change in changes:
         db.insert_commit(
             connection,

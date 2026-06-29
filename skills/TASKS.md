@@ -104,6 +104,11 @@ Convenção de ID: `T<fase>.<sequência>`.
 - **Descrição:** medir overhead de `coverage.py` em 2-3 repositórios reais de tamanhos diferentes, validar contra meta de RNF2 (~20%).
 - **Pronto quando:** número real documentado; se exceder a meta, abrir task de mitigação (`--sample mode`, já previsto como risco em `ARCHITECTURE.md` Seção 13).
 
+### T4.3a — Mitigação de overhead do runtime trace (`--sample mode`)
+- **Depende de:** T4.3
+- **Descrição:** adicionar modo opt-in `--sample mode` para reduzir overhead do runtime trace quando benchmarks reais excederem a meta RNF2 (~20%).
+- **Pronto quando:** `vitality scan --sample mode` rastreia um subconjunto documentado da execução de testes, reduz overhead em repositórios pequenos/rápidos, e mantém saída clara de que os dados são amostrados.
+
 ### T4.4 — Empacotamento e publicação no PyPI
 - **Depende de:** T4.1, T4.2, T4.3
 - **Descrição:** configurar `pyproject.toml` para build, publicar primeira versão (`0.1.0`) no PyPI.

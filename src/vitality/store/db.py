@@ -10,14 +10,49 @@ from typing import Any
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
+class StoreDatabaseError(RuntimeError):
+    """Raised when the local SQLite store cannot be opened or read."""
+
+
 def get_connection(database_path: str | Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(database_path)
+    try:
+        connection = sqlite3.connect(database_path)
+    except sqlite3.Error as error:
+        raise StoreDatabaseError(f"database error: {error}") from error
     connection.row_factory = sqlite3.Row
     return connection
 
 
 def apply_schema(connection: sqlite3.Connection) -> None:
-    connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    try:
+        connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        connection.commit()
+    except sqlite3.DatabaseError as error:
+        raise StoreDatabaseError(f"database error: {error}") from error
+
+
+def prepare_scan(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute(
+            """
+            DELETE FROM runtime_calls
+            WHERE last_scan_id IN (
+                SELECT scan_id FROM scans WHERE finished_at IS NULL
+            )
+            """
+        )
+        connection.execute("DELETE FROM scans WHERE finished_at IS NULL")
+        connection.commit()
+    except sqlite3.DatabaseError as error:
+        raise StoreDatabaseError(f"database error: {error}") from error
+
+
+def clear_commits(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM commits")
+
+
+def clear_declared_dependencies(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM declared_dependencies")
 
 
 def insert_commit(
@@ -32,6 +67,9 @@ def insert_commit(
         """
         INSERT INTO commits (commit_hash, author, committed_at, file_path)
         VALUES (?, ?, ?, ?)
+        ON CONFLICT (commit_hash, file_path) DO UPDATE SET
+            author = excluded.author,
+            committed_at = excluded.committed_at
         """,
         (commit_hash, author, committed_at, file_path),
     )
@@ -59,6 +97,9 @@ def insert_declared_dependency(
         """
         INSERT INTO declared_dependencies (name, version_spec, source_file)
         VALUES (?, ?, ?)
+        ON CONFLICT (name) DO UPDATE SET
+            version_spec = excluded.version_spec,
+            source_file = excluded.source_file
         """,
         (name, version_spec, source_file),
     )
@@ -88,6 +129,8 @@ def insert_runtime_call(
         """
         INSERT INTO runtime_calls (symbol, call_count, last_scan_id)
         VALUES (?, ?, ?)
+        ON CONFLICT (symbol, last_scan_id) DO UPDATE SET
+            call_count = excluded.call_count
         """,
         (symbol, call_count, last_scan_id),
     )

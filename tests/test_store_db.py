@@ -27,6 +27,13 @@ class StoreDbTests(unittest.TestCase):
 
         self.assertEqual(row["example_column"], "value")
 
+    def test_get_connection_without_initialized_store_raises_clear_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / ".vitality" / "data.db"
+
+            with self.assertRaisesRegex(db.StoreDatabaseError, "database"):
+                db.get_connection(database_path)
+
     def test_apply_schema_creates_all_tables(self):
         db.apply_schema(self.connection)
 

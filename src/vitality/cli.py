@@ -50,10 +50,16 @@ def init_project(project_root: Path) -> int:
     vitality_dir = project_root / ".vitality"
     vitality_dir.mkdir(exist_ok=True)
 
-    connection = db.get_connection(vitality_dir / "data.db")
+    try:
+        connection = db.get_connection(vitality_dir / "data.db")
+    except db.StoreDatabaseError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
     try:
         db.apply_schema(connection)
-        connection.commit()
+    except db.StoreDatabaseError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
     finally:
         connection.close()
 
@@ -73,10 +79,16 @@ def scan_project(project_root: Path) -> int:
     vitality_dir = project_root / ".vitality"
     vitality_dir.mkdir(exist_ok=True)
 
-    connection = db.get_connection(vitality_dir / "data.db")
     scan_id = str(uuid.uuid4())
     try:
+        connection = db.get_connection(vitality_dir / "data.db")
+    except db.StoreDatabaseError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+
+    try:
         db.apply_schema(connection)
+        db.prepare_scan(connection)
         db.insert_scan(
             connection,
             scan_id=scan_id,
@@ -104,6 +116,12 @@ def scan_project(project_root: Path) -> int:
         connection.commit()
         print(f"error: {error}", file=sys.stderr)
         return TEST_FAILURE_EXIT_CODE
+    except db.StoreDatabaseError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+    except sqlite3.DatabaseError as error:
+        print(f"error: database error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
     except (git_history.GitHistoryError, runtime_trace.RuntimeTraceError) as error:
         connection.commit()
         print(f"error: {error}", file=sys.stderr)
@@ -132,7 +150,12 @@ def deps_report(project_root: Path, args: list[str] | None = None) -> int:
         print("error: unsupported format", file=sys.stderr)
         return TOOL_ERROR_EXIT_CODE
 
-    connection = db.get_connection(project_root / ".vitality" / "data.db")
+    try:
+        connection = db.get_connection(project_root / ".vitality" / "data.db")
+    except db.StoreDatabaseError as error:
+        print_deps_database_error(error, output_format)
+        return TOOL_ERROR_EXIT_CODE
+
     try:
         report = dependency_audit.build_report(
             connection,
@@ -146,6 +169,12 @@ def deps_report(project_root: Path, args: list[str] | None = None) -> int:
             )
         else:
             print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+    except sqlite3.DatabaseError as error:
+        print_deps_database_error(
+            db.StoreDatabaseError(f"database error: {error}"),
+            output_format,
+        )
         return TOOL_ERROR_EXIT_CODE
     finally:
         connection.close()
@@ -180,7 +209,12 @@ def query_report(project_root: Path, args: list[str]) -> int:
 
     from vitality.reports import query
 
-    connection = db.get_connection(project_root / ".vitality" / "data.db")
+    try:
+        connection = db.get_connection(project_root / ".vitality" / "data.db")
+    except db.StoreDatabaseError as error:
+        print_query_database_error(error)
+        return TOOL_ERROR_EXIT_CODE
+
     try:
         report = query.build_module_report(
             connection,
@@ -199,6 +233,9 @@ def query_report(project_root: Path, args: list[str]) -> int:
             file=sys.stderr,
         )
         return TOOL_ERROR_EXIT_CODE
+    except sqlite3.DatabaseError as error:
+        print_query_database_error(db.StoreDatabaseError(f"database error: {error}"))
+        return TOOL_ERROR_EXIT_CODE
     finally:
         connection.close()
 
@@ -210,6 +247,23 @@ def parse_query_args(args: list[str]) -> str | None:
     if len(args) == 4 and args[0] == "--module" and args[2:] == ["--format", "json"]:
         return args[1]
     return None
+
+
+def print_deps_database_error(error: db.StoreDatabaseError, output_format: str) -> None:
+    if output_format == "json":
+        print(
+            json.dumps({"error": str(error), "code": "database_error"}),
+            file=sys.stderr,
+        )
+    else:
+        print(f"error: {error}", file=sys.stderr)
+
+
+def print_query_database_error(error: db.StoreDatabaseError) -> None:
+    print(
+        json.dumps({"error": str(error), "code": "database_error"}),
+        file=sys.stderr,
+    )
 
 
 def utc_now() -> str:
