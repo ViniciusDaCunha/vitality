@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 import sqlite3
 import subprocess
@@ -31,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
         return init_project(Path.cwd())
     if args == ["scan"]:
         return scan_project(Path.cwd())
+    if args[:1] == ["deps"]:
+        return deps_report(Path.cwd(), args[1:])
+    if args[:1] == ["query"]:
+        return query_report(Path.cwd(), args[1:])
 
     parser = build_parser()
     parser.parse_args(args)
@@ -113,6 +118,98 @@ def scan_project(project_root: Path) -> int:
     print(f"symbols traced: {symbol_count}")
     print(f"duration: {duration:.2f}s")
     return 0
+
+
+def deps_report(project_root: Path, args: list[str] | None = None) -> int:
+    if not is_git_repository(project_root):
+        print("error: not a git repository", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+
+    from vitality.reports import dependency_audit
+
+    output_format = parse_deps_format(args or [])
+    if output_format is None:
+        print("error: unsupported format", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+
+    connection = db.get_connection(project_root / ".vitality" / "data.db")
+    try:
+        report = dependency_audit.build_report(
+            connection,
+            generated_at=utc_now(),
+        )
+    except dependency_audit.NoScanFoundError as error:
+        if output_format == "json":
+            print(
+                json.dumps({"error": str(error), "code": "no_scan_found"}),
+                file=sys.stderr,
+            )
+        else:
+            print(f"error: {error}", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+    finally:
+        connection.close()
+
+    if output_format == "json":
+        print(json.dumps(report))
+    else:
+        print(dependency_audit.format_human_table(report["dependencies"]))
+    return 0
+
+
+def parse_deps_format(args: list[str]) -> str | None:
+    if not args:
+        return "human"
+    if args == ["--format", "json"]:
+        return "json"
+    return None
+
+
+def query_report(project_root: Path, args: list[str]) -> int:
+    if not is_git_repository(project_root):
+        print(
+            json.dumps({"error": "not a git repository", "code": "not_git_repository"}),
+            file=sys.stderr,
+        )
+        return TOOL_ERROR_EXIT_CODE
+
+    module_path = parse_query_args(args)
+    if module_path is None:
+        print("usage: vitality query --module <path> --format json", file=sys.stderr)
+        return TOOL_ERROR_EXIT_CODE
+
+    from vitality.reports import query
+
+    connection = db.get_connection(project_root / ".vitality" / "data.db")
+    try:
+        report = query.build_module_report(
+            connection,
+            module_path=module_path,
+            generated_at=utc_now(),
+        )
+    except query.ModuleNotFoundError as error:
+        print(
+            json.dumps({"error": str(error), "code": "module_not_found"}),
+            file=sys.stderr,
+        )
+        return TOOL_ERROR_EXIT_CODE
+    except query.NoScanFoundError as error:
+        print(
+            json.dumps({"error": str(error), "code": "no_scan_found"}),
+            file=sys.stderr,
+        )
+        return TOOL_ERROR_EXIT_CODE
+    finally:
+        connection.close()
+
+    print(json.dumps(report))
+    return 0
+
+
+def parse_query_args(args: list[str]) -> str | None:
+    if len(args) == 4 and args[0] == "--module" and args[2:] == ["--format", "json"]:
+        return args[1]
+    return None
 
 
 def utc_now() -> str:
