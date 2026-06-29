@@ -57,12 +57,12 @@ class RuntimeTraceTests(unittest.TestCase):
             self.assertIn("samplepkg.used", symbols)
             self.assertNotIn("samplepkg.unused", symbols)
 
-    def test_collect_runtime_trace_failing_tests_raise_clear_error(self):
+    def test_collect_runtime_trace_failing_tests_persists_partial_calls(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo = Path(temp_dir)
             write_sample_project(repo, failing_test=True)
 
-            with self.assertRaisesRegex(runtime_trace.RuntimeTraceError, "test command failed"):
+            with self.assertRaisesRegex(runtime_trace.TestSuiteFailed, "test command failed"):
                 runtime_trace.collect(
                     repo,
                     self.connection,
@@ -77,7 +77,12 @@ class RuntimeTraceTests(unittest.TestCase):
                     ],
                 )
 
-            self.assertEqual(db.select_runtime_calls(self.connection), [])
+            calls = {
+                row["symbol"]: row
+                for row in db.select_runtime_calls(self.connection)
+            }
+            self.assertIn("samplepkg.used", calls)
+            self.assertEqual(calls["samplepkg.used"]["last_scan_id"], "scan-1")
 
 
 def write_sample_project(repo: Path, *, failing_test: bool = False) -> None:

@@ -18,6 +18,10 @@ class RuntimeTraceError(RuntimeError):
     """Raised when runtime tracing cannot complete successfully."""
 
 
+class TestSuiteFailed(RuntimeTraceError):
+    """Raised after runtime data is persisted when the target test suite fails."""
+
+
 @dataclass(frozen=True)
 class RuntimeCall:
     symbol: str
@@ -43,7 +47,7 @@ def collect(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         coverage_data_path = Path(temp_dir) / ".coverage"
-        run_tests_with_coverage(repo, command, coverage_data_path)
+        test_returncode = run_tests_with_coverage(repo, command, coverage_data_path)
         calls = read_runtime_calls(repo, coverage_data_path)
 
     for call in calls:
@@ -54,6 +58,8 @@ def collect(
             last_scan_id=last_scan_id,
         )
     connection.commit()
+    if test_returncode != 0:
+        raise TestSuiteFailed("test command failed")
     return len(calls)
 
 
@@ -61,7 +67,7 @@ def run_tests_with_coverage(
     repo: Path,
     test_command: list[str],
     coverage_data_path: Path,
-) -> None:
+) -> int:
     result = subprocess.run(
         coverage_command(test_command, coverage_data_path),
         cwd=repo,
@@ -70,8 +76,7 @@ def run_tests_with_coverage(
         capture_output=True,
         check=False,
     )
-    if result.returncode != 0:
-        raise RuntimeTraceError("test command failed")
+    return result.returncode
 
 
 def coverage_command(test_command: list[str], coverage_data_path: Path) -> list[str]:
